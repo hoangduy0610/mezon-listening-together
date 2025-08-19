@@ -1,262 +1,199 @@
 import React, { useState, useEffect } from 'react';
-import io from 'socket.io-client';
 import toast, { Toaster } from 'react-hot-toast';
+
+// Import refactored components
 import VideoPlayer from './components/VideoPlayer';
 import VideoSearch from './components/VideoSearch';
 import Playlist from './components/Playlist';
 import Controls from './components/Controls';
+import RoomJoin from './components/RoomJoin';
+import Header from './components/Header';
+import ErrorBoundary from './components/ErrorBoundary';
+
+// Import custom hooks
+import { useSocket } from './hooks/useSocket';
+import { useRoom } from './hooks/useRoom';
+import { usePlaylist } from './hooks/usePlaylist';
+import { usePlayerControls } from './hooks/usePlayerControls';
+
+// Import constants
+import { APP_CONFIG } from './config/constants';
 
 function App() {
-  const [socket, setSocket] = useState(null);
-  const [roomId, setRoomId] = useState('');
   const [showRoomJoin, setShowRoomJoin] = useState(true);
-  const [currentVideo, setCurrentVideo] = useState(null);
-  const [playlist, setPlaylist] = useState([]);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(50);
-  const [participantCount, setParticipantCount] = useState(0);
-  const [syncTime, setSyncTime] = useState(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [hasAttemptedAutoJoin, setHasAttemptedAutoJoin] = useState(false);
 
-  useEffect(() => {
-    // Check if there's a room ID in URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlRoomId = urlParams.get('room');
-    if (urlRoomId) {
-      setRoomId(urlRoomId);
+  // Initialize custom hooks
+  const { socket, isConnected, connectionError, createSocket, disconnect } = useSocket();
+  const { roomId, participantCount, isInRoom, joinRoom, copyShareUrl, validateRoomName } = useRoom(socket);
+  const { currentVideo, playlist, addVideo, removeVideo, reorderPlaylist, skipVideo, handleVideoEnd } = usePlaylist(socket);
+  const { 
+    isPlaying, 
+    volume, 
+    syncTime, 
+    handlePlay, 
+    handlePause, 
+    handleSeek, 
+    handleVolumeChange, 
+    toggleMute, 
+    sendTimeUpdate,
+    clearSyncTime 
+  } = usePlayerControls(socket);
+
+  // Handle room joining - simplified to prevent duplicate notifications
+  const handleJoinRoom = (roomIdToJoin) => {
+    console.log('handleJoinRoom called with:', roomIdToJoin);
+    
+    // Quick validation 
+    const validationError = validateRoomName(roomIdToJoin);
+    if (validationError) {
+      console.warn('Room validation failed:', validationError);
+      return; // Let the RoomJoin component show the error
     }
-  }, []);
 
-  const joinRoom = (newRoomId) => {
-    if (!newRoomId.trim()) {
-      toast.error('Please enter a room name');
+    // Prevent duplicate attempts
+    if (hasAttemptedAutoJoin || isInRoom) {
+      console.log('Skipping join - already attempted or in room');
+      setShowRoomJoin(false);
+      setIsInitialized(true);
       return;
     }
 
-    // Create socket connection
-    const newSocket = io(process.env.REACT_APP_SERVER_URL || 'http://localhost:5000');
-    setSocket(newSocket);
-
-    // Set up socket listeners
-    newSocket.on('connect', () => {
-      console.log('Connected to server');
-      newSocket.emit('join-room', newRoomId);
-      setShowRoomJoin(false);
+    // Create socket and join room
+    if (!socket) {
+      console.log('Creating socket and joining room');
+      const newSocket = createSocket();
       
-      // Update URL
-      const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${newRoomId}`;
-      window.history.pushState({ path: newUrl }, '', newUrl);
-      
-      toast.success(`Joined room: ${newRoomId}`);
-    });
-
-    newSocket.on('disconnect', () => {
-      console.log('Disconnected from server');
-      toast.error('Disconnected from server');
-    });
-
-    newSocket.on('room-state', (state) => {
-      setCurrentVideo(state.currentVideo);
-      setPlaylist(state.playlist);
-      setIsPlaying(state.isPlaying);
-      setVolume(state.volume);
-      setParticipantCount(state.participantCount);
-    });
-
-    newSocket.on('playlist-updated', (newPlaylist) => {
-      setPlaylist(newPlaylist);
-    });
-
-    newSocket.on('play-video', (video) => {
-      setCurrentVideo(video);
-      setIsPlaying(true);
-      toast.success(`Now playing: ${video.title}`);
-    });
-
-    newSocket.on('playlist-ended', () => {
-      setCurrentVideo(null);
-      setIsPlaying(false);
-      toast('Playlist ended! Add more videos to continue.', { icon: '🎵' });
-    });
-
-    newSocket.on('participant-joined', (count) => {
-      setParticipantCount(count);
-      toast('Someone joined the room!', { icon: '👋' });
-    });
-
-    newSocket.on('participant-left', (count) => {
-      setParticipantCount(count);
-      toast('Someone left the room', { icon: '👋' });
-    });
-
-    // Player sync events
-    newSocket.on('play', () => {
-      setIsPlaying(true);
-    });
-
-    newSocket.on('pause', () => {
-      setIsPlaying(false);
-    });
-
-    newSocket.on('volume-change', (newVolume) => {
-      setVolume(newVolume);
-    });
-
-    newSocket.on('seek', (time) => {
-      console.log('Received seek event from server:', time);
-      setSyncTime(time);
-    });
-
-    // Handle initial sync when joining room with active video
-    newSocket.on('sync-position', (data) => {
-      console.log('Received initial sync position:', data);
-      setSyncTime({ time: data.time, type: 'initial' });
-      if (data.isPlaying !== isPlaying) {
-        setIsPlaying(data.isPlaying);
+      if (newSocket) {
+        // Wait for connection, then join
+        newSocket.once('connect', () => {
+          console.log('Socket connected, joining room');
+          const success = joinRoom(roomIdToJoin);
+          if (success) {
+            setShowRoomJoin(false);
+            setIsInitialized(true);
+            setHasAttemptedAutoJoin(true);
+            toast.success(`Joined room: ${roomIdToJoin}`);
+          }
+        });
       }
-    });
-
-    // Handle periodic sync to keep everyone aligned (gentler than manual sync)
-    newSocket.on('periodic-sync', (data) => {
-      console.log('Received periodic sync:', data);
-      // Add a flag to indicate this is a gentle sync
-      setSyncTime({ time: data.time, type: 'periodic', tolerance: data.tolerance });
-    });
-
-    setRoomId(newRoomId);
+    } else if (isConnected) {
+      // Socket already connected, join immediately
+      console.log('Socket already connected, joining room');
+      const success = joinRoom(roomIdToJoin);
+      if (success) {
+        setShowRoomJoin(false);
+        setIsInitialized(true);
+        setHasAttemptedAutoJoin(true);
+        toast.success(`Joined room: ${roomIdToJoin}`);
+      }
+    }
   };
 
-  const addVideo = (video) => {
-    if (!socket) return;
-    socket.emit('add-video', video);
-    toast.success('Added to playlist!', { icon: '➕' });
+  // Initialize app and check for room in URL - single useEffect
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlRoomId = urlParams.get('room');
+    
+    if (urlRoomId?.trim()) {
+      console.log('Found room in URL, attempting to join:', urlRoomId.trim());
+      handleJoinRoom(urlRoomId.trim());
+    } else {
+      console.log('No room in URL, showing room join screen');
+      setIsInitialized(true);
+    }
+  }, []); // Run only once on mount
+
+  // Handle leaving room
+  const handleLeaveRoom = () => {
+    disconnect();
+    setShowRoomJoin(true);
+    setIsInitialized(false);
   };
 
-  const removeVideo = (videoId) => {
-    if (!socket) return;
-    socket.emit('remove-video', videoId);
-  };
-
-  const handlePlay = () => {
-    if (!socket) return;
-    socket.emit('play');
-    setIsPlaying(true);
-  };
-
-  const handlePause = () => {
-    if (!socket) return;
-    socket.emit('pause');
-    setIsPlaying(false);
-  };
-
-  const handleSeek = (time) => {
-    if (!socket) return;
-    socket.emit('seek', time);
-  };
-
-  const handleVolumeChange = (newVolume) => {
-    if (!socket) return;
-    socket.emit('volume-change', newVolume);
-    setVolume(newVolume);
-  };
-
-  const handleSkip = () => {
-    if (!socket) return;
-    socket.emit('skip-video');
-  };
-
-  const handleVideoEnd = () => {
-    if (!socket) return;
-    socket.emit('video-ended');
-  };
-
-  const reorderPlaylist = (newPlaylist) => {
-    if (!socket) return;
-    socket.emit('reorder-playlist', newPlaylist);
-    setPlaylist(newPlaylist);
-  };
-
-  if (showRoomJoin) {
+  // Show room join screen if not initialized
+  if (!isInitialized || showRoomJoin) {
     return (
-      <div className="room-join">
-        <div className="room-join-modal">
-          <h1 className="room-join-title">🎵 Listen Together</h1>
-          <p style={{ marginBottom: '1rem', color: '#666' }}>
-            Join or create a room to start listening together
-          </p>
-          <input
-            type="text"
-            className="room-input"
-            placeholder="Enter room name..."
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && joinRoom(roomId)}
-            autoFocus
-          />
-          <button 
-            className="join-btn"
-            onClick={() => joinRoom(roomId)}
-          >
-            Join Room
-          </button>
-        </div>
-      </div>
+      <ErrorBoundary>
+        <RoomJoin 
+          initialRoomId={roomId}
+          onJoinRoom={handleJoinRoom}
+          isConnecting={!isConnected && !!socket}
+          connectionError={connectionError}
+          validateRoomName={validateRoomName}
+        />
+      </ErrorBoundary>
     );
   }
 
   return (
-    <div className="app">
-      <Toaster position="top-right" />
-      
-      <header className="header">
-        <div className="logo">
-          <i className="fas fa-headphones"></i>
-          Listen Together
-        </div>
-        <div className="room-info">
-          <span>Room: <strong>{roomId}</strong></span>
-          <span className="participant-count">
-            <i className="fas fa-users"></i> {participantCount}
-          </span>
-        </div>
-      </header>
+    <ErrorBoundary>
+      <div className="app">
+        <Toaster 
+          position="top-right"
+          toastOptions={{
+            duration: APP_CONFIG.toastDuration,
+            style: {
+              background: '#363636',
+              color: '#fff',
+            }
+          }}
+        />
+        
+        <Header 
+          roomId={roomId}
+          participantCount={participantCount}
+          isConnected={isConnected}
+          onLeaveRoom={handleLeaveRoom}
+          onCopyShareUrl={copyShareUrl}
+        />
 
-      <div className="main-container">
-        <div className="video-section">
-          <VideoPlayer 
-            currentVideo={currentVideo}
-            isPlaying={isPlaying}
-            volume={volume}
-            syncTime={syncTime}
-            socket={socket}
-            onPlay={handlePlay}
-            onPause={handlePause}
-            onSeek={handleSeek}
-            onVideoEnd={handleVideoEnd}
-            onSyncComplete={() => setSyncTime(null)}
-          />
-          
-          <Controls
-            isPlaying={isPlaying}
-            volume={volume}
-            onPlay={handlePlay}
-            onPause={handlePause}
-            onSkip={handleSkip}
-            onVolumeChange={handleVolumeChange}
-            hasVideo={!!currentVideo}
-          />
-        </div>
+        <div className="main-container">
+          <div className="video-section">
+            <VideoPlayer 
+              currentVideo={currentVideo}
+              isPlaying={isPlaying}
+              volume={volume}
+              syncTime={syncTime}
+              socket={socket}
+              onPlay={handlePlay}
+              onPause={handlePause}
+              onSeek={handleSeek}
+              onVideoEnd={handleVideoEnd}
+              onSyncComplete={clearSyncTime}
+              onTimeUpdate={sendTimeUpdate}
+            />
+            
+            <Controls
+              isPlaying={isPlaying}
+              volume={volume}
+              onPlay={handlePlay}
+              onPause={handlePause}
+              onSkip={skipVideo}
+              onVolumeChange={handleVolumeChange}
+              onToggleMute={toggleMute}
+              hasVideo={!!currentVideo}
+              isConnected={isConnected}
+            />
+          </div>
 
-        <div className="sidebar">
-          <VideoSearch onAddVideo={addVideo} />
-          <Playlist 
-            playlist={playlist}
-            currentVideo={currentVideo}
-            onRemoveVideo={removeVideo}
-            onReorderPlaylist={reorderPlaylist}
-          />
+          <div className="sidebar">
+            <VideoSearch 
+              onAddVideo={addVideo}
+              isConnected={isConnected}
+            />
+            <Playlist 
+              playlist={playlist}
+              currentVideo={currentVideo}
+              onRemoveVideo={removeVideo}
+              onReorderPlaylist={reorderPlaylist}
+              isConnected={isConnected}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }
 

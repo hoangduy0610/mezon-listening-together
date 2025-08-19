@@ -21,14 +21,37 @@ export const debugPlayerState = (player) => {
   }
   
   try {
-    const state = {
-      playerState: player.getPlayerState(),
-      currentTime: player.getCurrentTime(),
-      duration: player.getDuration(),
-      volume: player.getVolume(),
-      playbackRate: player.getPlaybackRate(),
-      videoId: player.getVideoData()?.video_id
-    };
+    // Safely check if methods exist before calling them
+    const state = {};
+    
+    if (typeof player.getPlayerState === 'function') {
+      state.playerState = player.getPlayerState();
+    }
+    
+    if (typeof player.getCurrentTime === 'function') {
+      state.currentTime = player.getCurrentTime();
+    }
+    
+    if (typeof player.getDuration === 'function') {
+      state.duration = player.getDuration();
+    }
+    
+    if (typeof player.getVolume === 'function') {
+      state.volume = player.getVolume();
+    }
+    
+    if (typeof player.getPlaybackRate === 'function') {
+      state.playbackRate = player.getPlaybackRate();
+    }
+    
+    if (typeof player.getVideoData === 'function') {
+      try {
+        const videoData = player.getVideoData();
+        state.videoId = videoData?.video_id;
+      } catch (e) {
+        state.videoId = 'unavailable';
+      }
+    }
     
     console.log('Player State:', state);
     return state;
@@ -137,10 +160,34 @@ export const debugVideoDisplay = () => {
   }
 };
 
+// Get current player instance from any VideoPlayer component
+export const getCurrentPlayer = () => {
+  const playerElements = document.querySelectorAll('[id^="youtube-player"]');
+  for (const element of playerElements) {
+    // Check if this element has a YouTube player
+    if (element._ytPlayer) {
+      return element._ytPlayer;
+    }
+  }
+  return null;
+};
+
+// Auto-debug function that finds and debugs current player
+export const autoDebugPlayer = () => {
+  const player = getCurrentPlayer();
+  if (player) {
+    return debugPlayerState(player);
+  } else {
+    console.log('No active YouTube player found');
+    return null;
+  }
+};
+
 // Global debug function for browser console
 window.debugYouTube = {
   checkAPI: checkYouTubeAPI,
   debugPlayer: debugPlayerState,
+  autoDebug: autoDebugPlayer,
   stateNames: playerStateNames,
   testLoading: testYouTubeAPILoading,
   debugDisplay: debugVideoDisplay

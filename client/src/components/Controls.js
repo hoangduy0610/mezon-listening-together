@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 
-const Controls = ({ 
-  isPlaying, 
-  volume, 
-  onPlay, 
-  onPause, 
-  onSkip, 
-  onVolumeChange, 
-  hasVideo 
+const Controls = ({
+  isPlaying,
+  volume,
+  onPlay,
+  onPause,
+  onSkip,
+  onVolumeChange,
+  onToggleMute,
+  hasVideo,
+  isConnected,
 }) => {
   const [localVolume, setLocalVolume] = useState(volume);
   const [isMuted, setIsMuted] = useState(false);
@@ -30,7 +32,7 @@ const Controls = ({
     const newVolume = parseInt(e.target.value);
     setLocalVolume(newVolume);
     onVolumeChange(newVolume);
-    
+
     if (newVolume === 0) {
       setIsMuted(true);
     } else if (isMuted) {
@@ -39,90 +41,116 @@ const Controls = ({
   };
 
   const handleMuteToggle = () => {
-    if (isMuted) {
-      // Unmute
-      const volumeToRestore = previousVolume > 0 ? previousVolume : 50;
-      setLocalVolume(volumeToRestore);
-      onVolumeChange(volumeToRestore);
-      setIsMuted(false);
+    if (onToggleMute) {
+      // Use the prop function if provided
+      onToggleMute();
     } else {
-      // Mute
-      setPreviousVolume(localVolume);
-      setLocalVolume(0);
-      onVolumeChange(0);
-      setIsMuted(true);
+      // Fallback to local implementation
+      if (isMuted) {
+        const volumeToRestore = previousVolume > 0 ? previousVolume : 50;
+        setLocalVolume(volumeToRestore);
+        onVolumeChange(volumeToRestore);
+        setIsMuted(false);
+      } else {
+        setPreviousVolume(localVolume);
+        setLocalVolume(0);
+        onVolumeChange(0);
+        setIsMuted(true);
+      }
     }
   };
 
   const getVolumeIcon = () => {
     if (isMuted || localVolume === 0) {
-      return 'fas fa-volume-mute';
-    } else if (localVolume < 30) {
-      return 'fas fa-volume-down';
-    } else if (localVolume < 70) {
-      return 'fas fa-volume';
+      return "fas fa-volume-mute";
+    } else if (localVolume < 50) {
+      return "fas fa-volume-down";
     } else {
-      return 'fas fa-volume-up';
+      return "fas fa-volume-up";
     }
   };
 
+  const isControlsDisabled = !isConnected || !hasVideo;
+
   return (
     <div className="controls">
+      {/* Connection Status */}
+      {!isConnected && (
+        <div className="controls-offline">
+          <i className="fas fa-wifi-slash"></i>
+          <span>Offline - Controls disabled</span>
+        </div>
+      )}
+
       {/* Play/Pause Button */}
       <button
         className="control-btn"
         onClick={handlePlayPause}
-        disabled={!hasVideo}
-        title={isPlaying ? 'Pause' : 'Play'}
+        disabled={isControlsDisabled}
+        title={
+          isControlsDisabled
+            ? "Connect to control playback"
+            : isPlaying
+            ? "Pause"
+            : "Play"
+        }
         style={{
-          fontSize: '1.4rem',
-          opacity: hasVideo ? 1 : 0.5
+          fontSize: "1.4rem",
+          opacity: isControlsDisabled ? 0.3 : 1,
         }}
       >
-        <i className={isPlaying ? 'fas fa-pause' : 'fas fa-play'}></i>
+        <i className={isPlaying ? "fas fa-pause" : "fas fa-play"}></i>
       </button>
 
       {/* Skip Button */}
       <button
         className="control-btn"
         onClick={onSkip}
-        disabled={!hasVideo}
-        title="Skip to next video"
+        disabled={isControlsDisabled}
+        title={
+          isControlsDisabled ? "Connect to skip videos" : "Skip to next video"
+        }
         style={{
-          opacity: hasVideo ? 1 : 0.5
+          opacity: isControlsDisabled ? 0.3 : 1,
         }}
       >
         <i className="fas fa-forward"></i>
       </button>
 
       {/* Current Status Indicator */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        color: '#666',
-        fontSize: '0.9rem',
-        marginLeft: '1rem'
-      }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          color: "#666",
+          fontSize: "0.9rem",
+          marginLeft: "1rem",
+        }}
+      >
         {hasVideo ? (
           <>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: isPlaying ? '#4ade80' : '#ef4444',
-              animation: isPlaying ? 'pulse 2s infinite' : 'none'
-            }}></div>
-            <span>{isPlaying ? 'Playing' : 'Paused'}</span>
+            <div
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                backgroundColor: isPlaying ? "#4ade80" : "#ef4444",
+                animation: isPlaying ? "pulse 2s infinite" : "none",
+              }}
+            ></div>
+            <span>{isPlaying ? "Playing" : "Paused"}</span>
           </>
         ) : (
           <>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: '#94a3b8',
-            }}></div>
+            <div
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                backgroundColor: "#94a3b8",
+              }}
+            ></div>
             <span>No video</span>
           </>
         )}
@@ -133,16 +161,16 @@ const Controls = ({
         <button
           className="control-btn"
           onClick={handleMuteToggle}
-          title={isMuted ? 'Unmute' : 'Mute'}
+          title={isMuted ? "Unmute" : "Mute"}
           style={{
-            fontSize: '1rem',
-            width: '40px',
-            height: '40px',
+            fontSize: "1rem",
+            width: "40px",
+            height: "40px",
           }}
         >
           <i className={getVolumeIcon()}></i>
         </button>
-        
+
         <input
           type="range"
           min="0"
@@ -152,16 +180,18 @@ const Controls = ({
           className="volume-slider"
           title={`Volume: ${localVolume}%`}
           style={{
-            background: `linear-gradient(to right, #667eea 0%, #667eea ${localVolume}%, #e1e5e9 ${localVolume}%, #e1e5e9 100%)`
+            background: `linear-gradient(to right, #667eea 0%, #667eea ${localVolume}%, #e1e5e9 ${localVolume}%, #e1e5e9 100%)`,
           }}
         />
-        
-        <span style={{
-          fontSize: '0.8rem',
-          color: '#666',
-          minWidth: '30px',
-          textAlign: 'right'
-        }}>
+
+        <span
+          style={{
+            fontSize: "0.8rem",
+            color: "#666",
+            minWidth: "30px",
+            textAlign: "right",
+          }}
+        >
           {localVolume}%
         </span>
       </div>

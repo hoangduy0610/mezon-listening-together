@@ -154,9 +154,11 @@ MIT License - see LICENSE file for details
 - Some videos may be restricted for embedding
 
 **YouTube Player Issues**
+- If you see "getCurrentTime is not a function" error, the app will auto-recover
 - If you see "YouTube player element ID required" error, refresh the page
 - Check browser console for detailed YouTube player error messages
 - Use `window.debugYouTube.checkAPI()` in console to debug API loading
+- Use `window.debugYouTube.autoDebug()` to check current player state
 - Ensure you're not blocking YouTube iframe API in browser extensions or ad blockers
 - Try disabling browser extensions temporarily to test
 
@@ -176,11 +178,17 @@ Open browser developer tools and use these commands for troubleshooting:
 // Check YouTube API loading status
 window.debugYouTube.checkAPI()
 
-// Get detailed player state info (when video is playing)
-window.debugYouTube.debugPlayer()
+// Auto-find and debug current player (recommended)
+window.debugYouTube.autoDebug()
+
+// Check video display and iframe status
+window.debugYouTube.debugDisplay()
 
 // View player state names reference
 window.debugYouTube.stateNames
+
+// Test YouTube API loading manually
+window.debugYouTube.testLoading()
 ```
 
 ## 🚀 Deployment Guide

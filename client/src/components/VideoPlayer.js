@@ -13,9 +13,10 @@ const VideoPlayer = ({
   onPause, 
   onSeek, 
   onVideoEnd,
-  onSyncComplete
+  onSyncComplete,
+  onTimeUpdate
 }) => {
-  // Component rendering - reduced logging for performance
+  // Optimized for performance - minimal logging
   
   const playerRef = useRef(null);
   const playerInstanceRef = useRef(null);
@@ -27,6 +28,80 @@ const VideoPlayer = ({
   const playerIdRef = useRef('youtube-player-' + Math.random().toString(36).substr(2, 9));
   const isMountedRef = useRef(true);
   const currentVideoIdRef = useRef(null); // Track the currently loaded video ID
+
+  /**
+   * Safely get current time from YouTube player
+   * @returns {number} Current time in seconds or 0 if not available
+   */
+  const safeGetCurrentTime = () => {
+    try {
+      if (!playerInstanceRef.current) {
+        return 0;
+      }
+      
+      if (!playerReady) {
+        return 0;
+      }
+      
+      if (typeof playerInstanceRef.current.getCurrentTime !== 'function') {
+        console.warn('getCurrentTime method not available on player instance');
+        return 0;
+      }
+      
+      const time = playerInstanceRef.current.getCurrentTime();
+      return typeof time === 'number' && !isNaN(time) ? time : 0;
+      
+    } catch (error) {
+      console.warn('Error getting current time:', error.message);
+      
+      // If we get this error, the player might be in a bad state
+      if (error.message.includes('getCurrentTime is not a function')) {
+        console.warn('Player appears to be in invalid state, marking as not ready');
+        setPlayerReady(false);
+      }
+    }
+    return 0;
+  };
+
+  /**
+   * Safely call YouTube player method
+   * @param {string} methodName - Method to call
+   * @param {...any} args - Arguments to pass
+   * @returns {any} Method result or null if failed
+   */
+  const safePlayerCall = (methodName, ...args) => {
+    try {
+      if (!playerInstanceRef.current) {
+        return null;
+      }
+      
+      if (!playerReady) {
+        return null;
+      }
+      
+      if (typeof playerInstanceRef.current[methodName] !== 'function') {
+        console.warn(`Method ${methodName} not available on player instance`);
+        return null;
+      }
+      
+      const result = playerInstanceRef.current[methodName](...args);
+      return result;
+      
+    } catch (error) {
+      console.warn(`Error calling player method ${methodName}:`, error.message);
+      
+      // If we get method errors, the player might be in a bad state
+      if (error.message.includes('is not a function')) {
+        console.warn(`Player method ${methodName} failed, player may be in invalid state`);
+        
+        // For critical methods, mark player as not ready
+        if (['getCurrentTime', 'seekTo', 'loadVideoById'].includes(methodName)) {
+          setPlayerReady(false);
+        }
+      }
+    }
+    return null;
+  };
 
   // Initialize player when currentVideo changes
   useEffect(() => {
@@ -42,9 +117,11 @@ const VideoPlayer = ({
       console.log('Player already initialized, checking if new video needed');
       if (playerReady && playerInstanceRef.current && currentVideoIdRef.current !== currentVideo.videoId) {
         console.log('Loading new video in existing player:', currentVideo.title);
-        playerInstanceRef.current.loadVideoById(currentVideo.videoId);
-        currentVideoIdRef.current = currentVideo.videoId;
-        lastSyncTime.current = 0;
+        const loadResult = safePlayerCall('loadVideoById', currentVideo.videoId);
+        if (loadResult !== null) {
+          currentVideoIdRef.current = currentVideo.videoId;
+          lastSyncTime.current = 0;
+        }
       } else {
         console.log('Same video already loaded, not reloading');
       }
@@ -70,8 +147,11 @@ const VideoPlayer = ({
       const apiState = checkYouTubeAPI();
       console.log('API State:', apiState);
       
-      // Check if YouTube API is already loaded
-      if (window.YT && window.YT.Player && (window.YTReady || window.YT.loaded)) {
+      // Check if YouTube API is already loaded and functional
+      if (window.YT && 
+          window.YT.Player && 
+          typeof window.YT.Player === 'function' &&
+          (window.YTReady || window.YT.loaded)) {
         logPlayerEvent('API Ready', 'Initializing player immediately');
         setTimeout(initializePlayer, 100);
       } else {
@@ -82,7 +162,10 @@ const VideoPlayer = ({
         // Also try to initialize after a delay in case the API loads without the event
         setTimeout(() => {
           console.log('Backup initialization attempt after 2 seconds');
-          if (window.YT && window.YT.Player && !isInitialized) {
+          if (window.YT && 
+              window.YT.Player && 
+              typeof window.YT.Player === 'function' && 
+              !isInitialized) {
             console.log('Backup: YouTube API found, initializing...');
             initializePlayer();
           } else {
@@ -137,8 +220,8 @@ const VideoPlayer = ({
       return;
     }
     
-    if (!window.YT || !window.YT.Player) {
-      console.warn('YouTube API not available');
+    if (!window.YT || !window.YT.Player || typeof window.YT.Player !== 'function') {
+      console.warn('YouTube API not available or Player constructor not ready');
       setInitializationAttempted(false);
       return;
     }
@@ -187,8 +270,24 @@ const VideoPlayer = ({
       // Track which video we just loaded
       currentVideoIdRef.current = currentVideo.videoId;
       
+      // Store player reference in DOM element for debugging
+      const playerElement = document.getElementById(playerId);
+      if (playerElement) {
+        playerElement._ytPlayer = playerInstanceRef.current;
+      }
+      
       setIsInitialized(true);
       console.log('YouTube player successfully initialized');
+      
+      // Verify the player instance is properly set and functional
+      setTimeout(() => {
+        if (playerInstanceRef.current && typeof playerInstanceRef.current.getCurrentTime === 'function') {
+          console.log('Player verification successful - all methods available');
+        } else {
+          console.warn('Player verification failed - methods may not be available yet');
+          setPlayerReady(false); // Reset ready state to trigger re-initialization if needed
+        }
+      }, 500);
     } catch (error) {
       console.error('Failed to initialize YouTube player:', error);
       setPlayerError('Failed to initialize video player. Please refresh the page.');
@@ -198,16 +297,35 @@ const VideoPlayer = ({
   };
 
   const onPlayerReady = () => {
+    console.log('onPlayerReady called');
+    
+    // Verify player is actually ready and functional
+    if (!playerInstanceRef.current) {
+      console.error('Player ready event fired but no player instance');
+      return;
+    }
+
+    // Test if basic methods are available
+    try {
+      if (typeof playerInstanceRef.current.getCurrentTime !== 'function') {
+        console.error('Player instance missing getCurrentTime method');
+        return;
+      }
+    } catch (error) {
+      console.error('Error testing player methods:', error);
+      return;
+    }
+
     setPlayerReady(true);
     setPlayerError(null); // Clear any previous errors
     logPlayerEvent('Player Ready', 'YouTube player is ready for use');
     
     // Initialize lastSyncTime to current video position
-    if (playerInstanceRef.current) {
-      const currentTime = playerInstanceRef.current.getCurrentTime();
+    setTimeout(() => {
+      const currentTime = safeGetCurrentTime();
       lastSyncTime.current = currentTime;
       console.log('Initialized sync time to:', currentTime);
-    }
+    }, 100); // Small delay to ensure player is fully ready
     
     // Debug: Check if iframe was created and is visible
     const playerElement = document.getElementById(playerIdRef.current);
@@ -311,10 +429,12 @@ const VideoPlayer = ({
       
       if (isDifferentVideo && playerReady && playerInstanceRef.current) {
         console.log('Loading new video (different from current):', currentVideo.title);
-        playerInstanceRef.current.loadVideoById(currentVideo.videoId);
-        currentVideoIdRef.current = currentVideo.videoId;
-        // Reset sync time when loading new video to prevent sync loops
-        lastSyncTime.current = 0;
+        const loadResult = safePlayerCall('loadVideoById', currentVideo.videoId);
+        if (loadResult !== null) {
+          currentVideoIdRef.current = currentVideo.videoId;
+          // Reset sync time when loading new video to prevent sync loops
+          lastSyncTime.current = 0;
+        }
       } else if (isDifferentVideo) {
         console.log('New video detected but player not ready yet:', currentVideo.title);
         currentVideoIdRef.current = currentVideo.videoId;
@@ -336,12 +456,12 @@ const VideoPlayer = ({
   // Sync play/pause state
   useEffect(() => {
     if (playerReady && playerInstanceRef.current) {
-      const playerState = playerInstanceRef.current.getPlayerState();
+      const playerState = safePlayerCall('getPlayerState');
       
-      if (isPlaying && playerState !== window.YT.PlayerState.PLAYING) {
-        playerInstanceRef.current.playVideo();
-      } else if (!isPlaying && playerState === window.YT.PlayerState.PLAYING) {
-        playerInstanceRef.current.pauseVideo();
+      if (isPlaying && playerState !== window.YT?.PlayerState?.PLAYING) {
+        safePlayerCall('playVideo');
+      } else if (!isPlaying && playerState === window.YT?.PlayerState?.PLAYING) {
+        safePlayerCall('pauseVideo');
       }
     }
   }, [isPlaying, playerReady]);
@@ -349,14 +469,14 @@ const VideoPlayer = ({
   // Sync volume
   useEffect(() => {
     if (playerReady && playerInstanceRef.current) {
-      playerInstanceRef.current.setVolume(volume);
+      safePlayerCall('setVolume', volume);
     }
   }, [volume, playerReady]);
 
   // Handle external sync events (from other users or periodic sync)
   useEffect(() => {
     if (syncTime !== null && playerReady && playerInstanceRef.current) {
-      const currentTime = playerInstanceRef.current.getCurrentTime();
+      const currentTime = safeGetCurrentTime();
       
       // Handle both simple number and object format
       let targetTime, syncType, customTolerance;
@@ -395,8 +515,10 @@ const VideoPlayer = ({
       
       if (shouldSync) {
         console.log(`Syncing to external position: ${targetTime} (difference: ${timeDifference}s, type: ${syncType})`);
-        playerInstanceRef.current.seekTo(targetTime);
-        lastSyncTime.current = targetTime;
+        const seekResult = safePlayerCall('seekTo', targetTime);
+        if (seekResult !== null) {
+          lastSyncTime.current = targetTime;
+        }
       } else {
         console.log(`Skipping ${syncType} sync - difference: ${timeDifference}s (threshold: ${syncThreshold}s)`);
       }
@@ -410,17 +532,19 @@ const VideoPlayer = ({
 
   // Update lastSyncTime and broadcast time to server when video naturally progresses
   useEffect(() => {
-    if (!playerReady || !playerInstanceRef.current || !currentVideo || !isPlaying || !socket) {
+    if (!playerReady || !playerInstanceRef.current || !currentVideo || !isPlaying) {
       return;
     }
 
     const updateAndBroadcastTime = () => {
-      if (playerInstanceRef.current) {
-        const currentTime = playerInstanceRef.current.getCurrentTime();
+      const currentTime = safeGetCurrentTime();
+      if (currentTime >= 0) {
         lastSyncTime.current = currentTime;
         
-        // Send time update to server for other participants
-        socket.emit('time-update', currentTime);
+        // Use the onTimeUpdate prop if provided
+        if (onTimeUpdate) {
+          onTimeUpdate(currentTime);
+        }
       }
     };
 
@@ -428,16 +552,19 @@ const VideoPlayer = ({
     const syncUpdateInterval = setInterval(updateAndBroadcastTime, 2000); // Every 2 seconds
 
     return () => clearInterval(syncUpdateInterval);
-  }, [playerReady, currentVideo, isPlaying, socket]);
+  }, [playerReady, currentVideo, isPlaying, onTimeUpdate]);
 
   const handleSeek = (time) => {
     console.log('Local seek requested to:', time);
-    lastSyncTime.current = time;
-    if (playerReady && playerInstanceRef.current) {
-      playerInstanceRef.current.seekTo(time);
+    
+    const seekResult = safePlayerCall('seekTo', time);
+    if (seekResult !== null) {
+      lastSyncTime.current = time;
+      // Only send seek event if this is a manual user action and seek was successful
+      onSeek(time);
+    } else {
+      console.warn('Failed to seek - player not ready');
     }
-    // Only send seek event if this is a manual user action
-    onSeek(time);
   };
 
   // Show error state if player failed to initialize

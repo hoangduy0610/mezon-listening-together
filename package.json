@@ -13,20 +13,28 @@
     "install-all": "npm install && npm run install-client",
     "build:prod": "NODE_ENV=production npm run build",
     "start:prod": "NODE_ENV=production node server.js",
-    "deploy": "npm run install-all && npm run build:prod"
+    "deploy": "npm run install-all && npm run build:prod",
+    "health": "curl http://localhost:5000/api/health",
+    "logs": "node -e \"const logger = require('./src/utils/Logger'); new logger('Test').info('Logger test successful')\""
   },
-  "keywords": ["youtube", "collaborative", "listening", "synchronization"],
+  "keywords": [
+    "youtube",
+    "collaborative",
+    "listening",
+    "synchronization"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "axios": "^1.6.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "socket.io": "^4.7.4",
-    "cors": "^2.8.5",
-    "axios": "^1.6.2",
-    "dotenv": "^16.3.1"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2",
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.2"
   }
 }
