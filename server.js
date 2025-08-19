@@ -111,12 +111,25 @@ io.on('connection', (socket) => {
   socketHandlers.handleConnection(socket);
 });
 
-// Serve React app in production
-if (config.server.nodeEnv === 'production') {
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
-  });
-}
+// Serve React app for all non-API routes
+app.get('*', (req, res) => {
+  // Only serve React app if it's not an API route
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  
+  const buildPath = path.join(__dirname, 'client/build', 'index.html');
+  
+  // Check if build exists
+  if (require('fs').existsSync(buildPath)) {
+    res.sendFile(buildPath);
+  } else {
+    res.status(503).json({ 
+      error: 'Application not built',
+      message: 'Please run "npm run build" to build the client application'
+    });
+  }
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

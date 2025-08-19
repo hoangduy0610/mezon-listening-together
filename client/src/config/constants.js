@@ -65,7 +65,7 @@ export const YOUTUBE_CONFIG = {
 
 // API configuration
 export const API_CONFIG = {
-  baseURL: process.env.REACT_APP_SERVER_URL || 'http://localhost:5000',
+  baseURL: process.env.REACT_APP_SERVER_URL || '',
   endpoints: {
     search: '/api/search',
     health: '/api/health'
