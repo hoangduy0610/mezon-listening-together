@@ -1,12 +1,11 @@
-const axios = require('axios');
+const yt = require('youtube-search-without-api-key');
 const Logger = require('../utils/Logger');
 
 class YouTubeService {
-  constructor(apiKey, maxResults = 10) {
-    this.apiKey = apiKey;
+  constructor(apiKey = null, maxResults = 10) {
+    // API key no longer needed but keeping parameter for backward compatibility
     this.maxResults = maxResults;
     this.logger = new Logger('YouTubeService');
-    this.baseURL = 'https://www.googleapis.com/youtube/v3';
   }
 
   /**
@@ -17,33 +16,25 @@ class YouTubeService {
    */
   async searchVideos(query, maxResults = this.maxResults) {
     try {
-      this.validateApiKey();
+      const videos = await yt.search(query.trim());
       
-      const response = await axios.get(`${this.baseURL}/search`, {
-        params: {
-          part: 'snippet',
-          q: query,
-          type: 'video',
-          maxResults,
-          key: this.apiKey
-        }
-      });
-
-      const videos = response.data.items.map(this.transformVideoData);
+      // Limit results to maxResults
+      const limitedVideos = videos.slice(0, maxResults);
+      
+      // Transform to our expected format
+      const transformedVideos = limitedVideos.map(this.transformVideoData);
       
       this.logger.debug(`Search completed for "${query}"`, { 
-        resultCount: videos.length,
+        resultCount: transformedVideos.length,
         query 
       });
       
-      return videos;
+      return transformedVideos;
 
     } catch (error) {
       this.logger.error('YouTube search failed', {
         query,
-        error: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText
+        error: error.message
       });
       
       throw this.handleApiError(error);
@@ -51,81 +42,66 @@ class YouTubeService {
   }
 
   /**
-   * Transform YouTube API video data to our format
-   * @param {Object} item - YouTube API video item
+   * Transform youtube-search-without-api-key video data to our format
+   * @param {Object} item - Video item from youtube-search-without-api-key
    * @returns {Object} Transformed video object
    */
   transformVideoData(item) {
     return {
-      videoId: item.id.videoId,
-      title: item.snippet.title,
-      thumbnail: item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
-      channelTitle: item.snippet.channelTitle,
-      description: item.snippet.description,
-      publishedAt: item.snippet.publishedAt
+      videoId: item.id?.videoId || item.snippet?.url?.split('v=')[1]?.split('&')[0],
+      title: item.title || item.snippet?.title,
+      thumbnail: item.snippet?.thumbnails?.url || item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.default?.url,
+      channelTitle: item.channelTitle || 'Unknown Channel', // New API doesn't provide channel info
+      description: item.description || '',
+      publishedAt: item.snippet?.publishedAt || 'Unknown'
     };
   }
 
-  /**
-   * Validate that API key is configured
-   * @throws {Error} If API key is missing
-   */
-  validateApiKey() {
-    if (!this.apiKey) {
-      throw new Error('YouTube API key not configured. Please add YOUTUBE_API_KEY to environment variables.');
-    }
-  }
+  // API key validation no longer needed with youtube-search-without-api-key
 
   /**
-   * Handle YouTube API errors
-   * @param {Error} error - Axios error
+   * Handle search errors
+   * @param {Error} error - Search error
    * @returns {Error} Formatted error
    */
   handleApiError(error) {
-    if (error.response?.status === 403) {
-      return new Error('YouTube API quota exceeded or invalid API key');
-    }
-    
-    if (error.response?.status === 400) {
-      return new Error('Invalid search query');
-    }
-    
     if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-      return new Error('Network error: Unable to connect to YouTube API');
+      return new Error('Network error: Unable to connect to YouTube');
     }
     
-    return new Error('YouTube API error: ' + error.message);
+    if (error.message && error.message.includes('timeout')) {
+      return new Error('Search timeout: YouTube request took too long');
+    }
+    
+    return new Error('YouTube search error: ' + error.message);
   }
 
   /**
    * Get video details by ID
+   * Note: youtube-search-without-api-key doesn't provide detailed video info by ID
+   * This method now performs a search with the video ID
    * @param {string} videoId - YouTube video ID
    * @returns {Promise<Object>} Video details
    */
   async getVideoDetails(videoId) {
     try {
-      this.validateApiKey();
+      // Search using the video ID
+      const results = await yt.search(videoId);
       
-      const response = await axios.get(`${this.baseURL}/videos`, {
-        params: {
-          part: 'snippet,contentDetails',
-          id: videoId,
-          key: this.apiKey
-        }
-      });
-
-      if (response.data.items.length === 0) {
+      if (!results || results.length === 0) {
         throw new Error('Video not found');
       }
 
-      const video = response.data.items[0];
+      // Find exact match or use first result
+      const video = results.find(v => v.id?.videoId === videoId) || results[0];
+      
       return {
-        videoId: video.id,
-        title: video.snippet.title,
-        channelTitle: video.snippet.channelTitle,
-        duration: video.contentDetails.duration,
-        thumbnail: video.snippet.thumbnails.medium?.url || video.snippet.thumbnails.default?.url,
-        description: video.snippet.description
+        videoId: video.id?.videoId || videoId,
+        title: video.title || video.snippet?.title,
+        channelTitle: video.channelTitle || 'Unknown Channel',
+        duration: video.duration_raw || 'Unknown',
+        thumbnail: video.snippet?.thumbnails?.url || video.snippet?.thumbnails?.high?.url,
+        description: video.description || ''
       };
 
     } catch (error) {
