@@ -19,10 +19,27 @@
             "dest": "/server.js"
         },
         {
-            "src": "/(.*)",
+            "src": "/socket.io/(.*)",
+            "dest": "/server.js"
+        },
+        {
+            "src": "/static/(.*)",
+            "dest": "/client/build/static/$1"
+        },
+        {
+            "src": "/(.*\\.(js|css|map|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot))",
             "dest": "/client/build/$1"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/client/build/index.html"
         }
     ],
     "installCommand": "npm install && cd client && npm install",
-    "buildCommand": "cd client && npm run build"
+    "buildCommand": "cd client && npm run build",
+    "functions": {
+        "server.js": {
+            "includeFiles": "src/**"
+        }
+    }
 }
