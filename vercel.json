@@ -36,10 +36,5 @@
         }
     ],
     "installCommand": "npm install && cd client && npm install",
-    "buildCommand": "cd client && npm run build",
-    "functions": {
-        "server.js": {
-            "includeFiles": "src/**"
-        }
-    }
+    "buildCommand": "cd client && npm run build"
 }
