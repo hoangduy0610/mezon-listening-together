@@ -60,24 +60,12 @@ function App() {
       return;
     }
 
-    // Create socket and join room
+    // Store the room ID to join when socket connects
     if (!socket) {
-      console.log('Creating socket and joining room');
-      const newSocket = createSocket();
-      
-      if (newSocket) {
-        // Wait for connection, then join
-        newSocket.once('connect', () => {
-          console.log('Socket connected, joining room');
-          const success = joinRoom(roomIdToJoin);
-          if (success) {
-            setShowRoomJoin(false);
-            setIsInitialized(true);
-            setHasAttemptedAutoJoin(true);
-            toast.success(`Joined room: ${roomIdToJoin}`);
-          }
-        });
-      }
+      console.log('Creating socket for room:', roomIdToJoin);
+      createSocket();
+      // Store room ID for when socket connects
+      window.pendingRoomJoin = roomIdToJoin;
     } else if (isConnected) {
       // Socket already connected, join immediately
       console.log('Socket already connected, joining room');
@@ -90,6 +78,23 @@ function App() {
       }
     }
   };
+
+  // Handle pending room join when socket connects
+  useEffect(() => {
+    if (socket && isConnected && window.pendingRoomJoin && !hasAttemptedAutoJoin) {
+      console.log('Socket connected, processing pending room join:', window.pendingRoomJoin);
+      const roomIdToJoin = window.pendingRoomJoin;
+      window.pendingRoomJoin = null; // Clear pending join
+      
+      const success = joinRoom(roomIdToJoin);
+      if (success) {
+        setShowRoomJoin(false);
+        setIsInitialized(true);
+        setHasAttemptedAutoJoin(true);
+        toast.success(`Joined room: ${roomIdToJoin}`);
+      }
+    }
+  }, [socket, isConnected, joinRoom, hasAttemptedAutoJoin]);
 
   // Initialize app and check for room in URL - single useEffect
   useEffect(() => {
@@ -111,7 +116,16 @@ function App() {
     disconnect();
     setShowRoomJoin(true);
     setIsInitialized(false);
+    // Clear any pending room join
+    window.pendingRoomJoin = null;
   };
+
+  // Cleanup pending room join on unmount
+  useEffect(() => {
+    return () => {
+      window.pendingRoomJoin = null;
+    };
+  }, []);
 
   // Show room join screen if not initialized
   if (!isInitialized || showRoomJoin) {

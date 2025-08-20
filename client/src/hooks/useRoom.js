@@ -39,7 +39,7 @@ export const useRoom = (socket) => {
     console.log('joinRoom called with:', newRoomId);
     
     if (!socket) {
-      console.warn('Socket not available for room join');
+      console.error('Socket not available for room join');
       return false;
     }
 
