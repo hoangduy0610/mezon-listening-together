@@ -24,9 +24,5 @@
         }
     ],
     "installCommand": "npm install && cd client && npm install",
-    "buildCommand": "cd client && DISABLE_ESLINT_PLUGIN=true npm run build",
-    "env": {
-        "DISABLE_ESLINT_PLUGIN": "true",
-        "GENERATE_SOURCEMAP": "false"
-    }
+    "buildCommand": "cd client && npm run build"
 }

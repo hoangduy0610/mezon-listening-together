@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import io from 'socket.io-client';
 import toast from 'react-hot-toast';
-import { SOCKET_EVENTS, API_CONFIG } from '../config/constants';
+import { API_CONFIG } from '../config/constants';
 
 /**
  * Custom hook for managing socket connection and room state

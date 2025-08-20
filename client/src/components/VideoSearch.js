@@ -31,6 +31,7 @@ const VideoSearch = ({ onAddVideo, isConnected }) => {
         isConnected={isConnected}
       />
     ));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchResults, isConnected]);
 
   const hasResults = searchResults.length > 0;

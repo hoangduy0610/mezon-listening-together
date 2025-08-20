@@ -103,6 +103,7 @@ function App() {
       console.log('No room in URL, showing room join screen');
       setIsInitialized(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only once on mount
 
   // Handle leaving room

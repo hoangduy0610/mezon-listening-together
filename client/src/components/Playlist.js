@@ -3,6 +3,7 @@ import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import toast from 'react-hot-toast';
 
 const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist }) => {
+  // eslint-disable-next-line no-unused-vars
   const [draggedItem, setDraggedItem] = useState(null);
 
   const handleDragStart = (result) => {
@@ -31,12 +32,6 @@ const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist }) 
   const handleRemoveVideo = (videoId, videoTitle) => {
     onRemoveVideo(videoId);
     toast.success(`Removed: ${videoTitle}`, { icon: '🗑️' });
-  };
-
-  const formatDuration = (duration) => {
-    // This would need to be implemented with additional YouTube API call
-    // For now, just return empty string
-    return '';
   };
 
   if (playlist.length === 0) {
