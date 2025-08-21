@@ -125,7 +125,7 @@ const Login = ({ onLoginSuccess, onSkipLogin }) => {
                             onClick={handleLogin}
                             disabled={isLoading}
                         >
-                            Login with OAuth
+                            Login with Mezon
                         </button>
                     ) : (
                         <div className="warning-message">
