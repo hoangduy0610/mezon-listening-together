@@ -2,18 +2,19 @@ import React, { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import toast from 'react-hot-toast';
 
-const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist }) => {
+const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist, isConnected = true, canEdit = true }) => {
   // eslint-disable-next-line no-unused-vars
   const [draggedItem, setDraggedItem] = useState(null);
 
   const handleDragStart = (result) => {
+    if (!canEdit) return;
     setDraggedItem(result.draggableId);
   };
 
   const handleDragEnd = (result) => {
     setDraggedItem(null);
     
-    if (!result.destination) {
+    if (!canEdit || !result.destination) {
       return;
     }
 
@@ -30,6 +31,7 @@ const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist }) 
   };
 
   const handleRemoveVideo = (videoId, videoTitle) => {
+    if (!canEdit) return;
     onRemoveVideo(videoId);
     toast.success(`Removed: ${videoTitle}`, { icon: '🗑️' });
   };
@@ -45,11 +47,17 @@ const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist }) 
           <span className="playlist-count">0 videos</span>
         </div>
         
+        {!canEdit && (
+          <div className="permission-message">
+            You need playlist permission to manage videos
+          </div>
+        )}
+        
         <div className="empty-state">
           <i className="fas fa-music"></i>
           <p>No videos in playlist</p>
           <small style={{ color: '#999', marginTop: '0.5rem', display: 'block' }}>
-            Search and add videos to get started
+            {canEdit ? 'Search and add videos to get started' : 'Ask the room owner for playlist permission'}
           </small>
         </div>
       </div>
@@ -69,24 +77,31 @@ const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist }) 
       </div>
 
       <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <Droppable droppableId="playlist">
+        <Droppable droppableId="playlist" isDropDisabled={!canEdit}>
           {(provided, snapshot) => (
             <div
               {...provided.droppableProps}
               ref={provided.innerRef}
               className="playlist"
               style={{
-                backgroundColor: snapshot.isDraggingOver ? 'rgba(102, 126, 234, 0.05)' : 'transparent',
+                backgroundColor: snapshot.isDraggingOver && canEdit ? 'rgba(102, 126, 234, 0.05)' : 'transparent',
                 borderRadius: '12px',
                 padding: snapshot.isDraggingOver ? '0.5rem' : '0',
                 transition: 'all 0.2s ease',
               }}
             >
+              {!canEdit && (
+                <div className="permission-message" style={{ marginBottom: '1rem' }}>
+                  You need playlist permission to reorder or remove videos
+                </div>
+              )}
+              
               {playlist.map((video, index) => (
                 <Draggable 
                   key={video.id} 
                   draggableId={video.id.toString()} 
                   index={index}
+                  isDragDisabled={!canEdit}
                 >
                   {(provided, snapshot) => (
                     <div
@@ -106,17 +121,17 @@ const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist }) 
                       }}
                     >
                       <div 
-                        {...provided.dragHandleProps}
+                        {...(canEdit ? provided.dragHandleProps : {})}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           marginRight: '0.5rem',
-                          color: '#999',
-                          cursor: 'grab'
+                          color: canEdit ? '#999' : '#ccc',
+                          cursor: canEdit ? 'grab' : 'not-allowed'
                         }}
-                        onMouseDown={() => setDraggedItem(video.id)}
+                        onMouseDown={() => canEdit && setDraggedItem(video.id)}
                       >
-                        <i className="fas fa-grip-vertical"></i>
+                        <i className={`fas ${canEdit ? 'fa-grip-vertical' : 'fa-lock'}`}></i>
                       </div>
 
                       <img 
@@ -134,6 +149,9 @@ const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist }) 
                         </div>
                         <div className="playlist-item-channel">
                           {video.channelTitle}
+                          {video.addedBy && (
+                            <span className="added-by"> • Added by {video.addedBy}</span>
+                          )}
                         </div>
                       </div>
 
@@ -144,13 +162,15 @@ const Playlist = ({ playlist, currentVideo, onRemoveVideo, onReorderPlaylist }) 
                             e.stopPropagation();
                             handleRemoveVideo(video.id, video.title);
                           }}
-                          title="Remove from playlist"
+                          title={canEdit ? "Remove from playlist" : "You need permission to remove videos"}
+                          disabled={!canEdit}
                           style={{ 
-                            background: 'rgba(255, 59, 59, 0.1)',
-                            color: currentVideo?.id === video.id ? 'white' : '#ff3b3b'
+                            background: canEdit ? 'rgba(255, 59, 59, 0.1)' : 'rgba(200, 200, 200, 0.1)',
+                            color: canEdit ? (currentVideo?.id === video.id ? 'white' : '#ff3b3b') : '#ccc',
+                            cursor: canEdit ? 'pointer' : 'not-allowed'
                           }}
                         >
-                          <i className="fas fa-times"></i>
+                          <i className={`fas ${canEdit ? 'fa-times' : 'fa-lock'}`}></i>
                         </button>
                       </div>
 

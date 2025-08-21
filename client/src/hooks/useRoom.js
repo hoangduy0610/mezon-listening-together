@@ -7,8 +7,11 @@ import { SOCKET_EVENTS } from '../config/constants';
  */
 export const useRoom = (socket) => {
   const [roomId, setRoomId] = useState('');
+  const [participants, setParticipants] = useState([]);
   const [participantCount, setParticipantCount] = useState(0);
   const [isInRoom, setIsInRoom] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isOwner, setIsOwner] = useState(false);
 
   /**
    * Validate room name
@@ -24,7 +27,7 @@ export const useRoom = (socket) => {
 
     // Clean room name
     const cleanRoomId = roomName.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
-    
+
     if (cleanRoomId.length === 0) {
       return 'Please enter a valid room name (letters, numbers, hyphens, underscores only)';
     }
@@ -37,7 +40,7 @@ export const useRoom = (socket) => {
    */
   const joinRoom = useCallback((newRoomId) => {
     console.log('joinRoom called with:', newRoomId);
-    
+
     if (!socket) {
       console.error('Socket not available for room join');
       return false;
@@ -58,11 +61,11 @@ export const useRoom = (socket) => {
       socket.emit(SOCKET_EVENTS.JOIN_ROOM, cleanRoomId);
       setRoomId(cleanRoomId);
       setIsInRoom(true);
-      
+
       // Update URL without page refresh
       const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${cleanRoomId}`;
       window.history.pushState({ path: newUrl }, '', newUrl);
-      
+
       // Don't show success toast here - let the room-state event handle it
       console.log('Room join request sent successfully');
       return true;
@@ -86,18 +89,46 @@ export const useRoom = (socket) => {
       // Socket will automatically handle leaving on disconnect
       setRoomId('');
       setIsInRoom(false);
+      setParticipants([]);
       setParticipantCount(0);
-      
+      setCurrentUser(null);
+      setIsOwner(false);
+
       // Clear URL parameter
-      const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
-      window.history.pushState({ path: newUrl }, '', newUrl);
-      
+      // const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
+      // window.history.pushState({ path: newUrl }, '', newUrl);
+      window.location.replace("/");
+
       toast('Left room', { icon: '👋' });
 
     } catch (error) {
       console.error('Failed to leave room:', error);
     }
   }, [socket, isInRoom]);
+
+  /**
+   * Grant playlist permission to user
+   */
+  const grantPlaylistPermission = useCallback((socketId) => {
+    if (!socket || !isOwner) return;
+    socket.emit(SOCKET_EVENTS.GRANT_PLAYLIST_PERMISSION, socketId);
+  }, [socket, isOwner]);
+
+  /**
+   * Revoke playlist permission from user
+   */
+  const revokePlaylistPermission = useCallback((socketId) => {
+    if (!socket || !isOwner) return;
+    socket.emit(SOCKET_EVENTS.REVOKE_PLAYLIST_PERMISSION, socketId);
+  }, [socket, isOwner]);
+
+  /**
+   * Kick participant from room
+   */
+  const kickParticipant = useCallback((socketId) => {
+    if (!socket || !isOwner) return;
+    socket.emit(SOCKET_EVENTS.KICK_PARTICIPANT, socketId);
+  }, [socket, isOwner]);
 
   /**
    * Get room share URL
@@ -128,17 +159,24 @@ export const useRoom = (socket) => {
     if (!socket) return;
 
     const handleRoomState = (state) => {
-      console.log('Received room state, updating participant count:', state.participantCount);
-      if (typeof state.participantCount === 'number') {
+      console.log('Received room state:', state);
+
+      if (state.participants) {
+        setParticipants(state.participants);
+        setParticipantCount(state.participants.length);
+
+        // Find current user and check if owner
+        const current = state.participants.find(p => p.socketId === socket.id);
+        setCurrentUser(current);
+        setIsOwner(current?.isOwner || false);
+      } else if (typeof state.participantCount === 'number') {
         setParticipantCount(state.participantCount);
       }
-      // Don't show toast for initial room state
     };
 
     const handleParticipantJoined = (count) => {
       console.log('Participant joined, new count:', count);
       setParticipantCount(count);
-      // Only show toast if we're already in a room (not for initial join)
       if (isInRoom) {
         toast('Someone joined the room!', { icon: '👋' });
       }
@@ -152,24 +190,50 @@ export const useRoom = (socket) => {
       }
     };
 
+    const handlePermissionsUpdated = (updatedParticipants) => {
+      console.log('Permissions updated:', updatedParticipants);
+      setParticipants(updatedParticipants);
+      setParticipantCount(updatedParticipants.length);
+
+      // Update current user info
+      const current = updatedParticipants.find(p => p.socketId === socket.id);
+      setCurrentUser(current);
+      setIsOwner(current?.isOwner || false);
+    };
+
+    const handlePermissionDenied = (error) => {
+      toast.error(error.message || 'Permission denied');
+    };
+
+    const handleParticipantKicked = (data) => {
+      toast.error(data.message || 'You have been kicked from the room');
+      leaveRoom();
+    };
+
     // Add event listeners
     socket.on(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
     socket.on(SOCKET_EVENTS.PARTICIPANT_JOINED, handleParticipantJoined);
     socket.on(SOCKET_EVENTS.PARTICIPANT_LEFT, handleParticipantLeft);
+    socket.on(SOCKET_EVENTS.PERMISSIONS_UPDATED, handlePermissionsUpdated);
+    socket.on(SOCKET_EVENTS.PERMISSION_DENIED, handlePermissionDenied);
+    socket.on(SOCKET_EVENTS.PARTICIPANT_KICKED, handleParticipantKicked);
 
     // Cleanup
     return () => {
       socket.off(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
       socket.off(SOCKET_EVENTS.PARTICIPANT_JOINED, handleParticipantJoined);
       socket.off(SOCKET_EVENTS.PARTICIPANT_LEFT, handleParticipantLeft);
+      socket.off(SOCKET_EVENTS.PERMISSIONS_UPDATED, handlePermissionsUpdated);
+      socket.off(SOCKET_EVENTS.PERMISSION_DENIED, handlePermissionDenied);
+      socket.off(SOCKET_EVENTS.PARTICIPANT_KICKED, handleParticipantKicked);
     };
-  }, [socket, isInRoom]);
+  }, [socket, isInRoom, leaveRoom]);
 
   // Check for room ID in URL on mount
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const urlRoomId = urlParams.get('room');
-    
+
     if (urlRoomId && urlRoomId.trim()) {
       setRoomId(urlRoomId.trim().toLowerCase());
     }
@@ -177,10 +241,16 @@ export const useRoom = (socket) => {
 
   return {
     roomId,
+    participants,
     participantCount,
+    currentUser,
+    isOwner,
     isInRoom,
     joinRoom,
     leaveRoom,
+    grantPlaylistPermission,
+    revokePlaylistPermission,
+    kickParticipant,
     getShareUrl,
     copyShareUrl,
     validateRoomName

@@ -5,7 +5,9 @@ const Header = ({
   participantCount, 
   isConnected, 
   onLeaveRoom, 
-  onCopyShareUrl 
+  onCopyShareUrl,
+  user = null,
+  isOwner = false
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -52,6 +54,18 @@ const Header = ({
             <i className="fas fa-users"></i>
             <span>{participantCount}</span>
           </span>
+
+          {user && (
+            <span className="user-info">
+              {user.avatar && (
+                <img src={user.avatar} alt={user.username} className="user-avatar" />
+              )}
+              <span className="username">
+                {user.username}
+                {isOwner && <i className="fas fa-crown owner-crown" title="Room Owner"></i>}
+              </span>
+            </span>
+          )}
         </div>
 
         <div className="room-actions">

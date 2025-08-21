@@ -9,6 +9,7 @@ require('dotenv').config();
 const config = require('./config/default');
 const Logger = require('./src/utils/Logger');
 const YouTubeService = require('./src/services/YouTubeService');
+const AuthService = require('./src/services/AuthService');
 const SocketHandlers = require('./src/handlers/SocketHandlers');
 const RoomManager = require('./src/services/RoomManager');
 
@@ -28,6 +29,7 @@ const io = socketIo(server, {
 
 // Initialize services
 const youtubeService = new YouTubeService(config.youtube.apiKey, config.youtube.searchMaxResults);
+const authService = new AuthService();
 const socketHandlers = new SocketHandlers(io);
 
 // Middleware
@@ -53,23 +55,23 @@ app.get('/api/health', (req, res) => {
 app.get('/api/search', async (req, res) => {
   try {
     const { q } = req.query;
-    
+
     if (!q || q.trim().length === 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Search query required',
         message: 'Please provide a non-empty search query'
       });
     }
 
     if (q.length > 100) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Search query too long',
         message: 'Search query must be less than 100 characters'
       });
     }
 
     const videos = await youtubeService.searchVideos(q.trim());
-    
+
     logger.info('YouTube search completed', {
       query: q.trim(),
       resultCount: videos.length,
@@ -77,7 +79,7 @@ app.get('/api/search', async (req, res) => {
     });
 
     res.json(videos);
-    
+
   } catch (error) {
     logger.error('YouTube search failed', {
       query: req.query.q,
@@ -86,22 +88,93 @@ app.get('/api/search', async (req, res) => {
     });
 
     if (error.message.includes('API key')) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'YouTube API configuration error',
         message: 'Please configure YouTube API key'
       });
     }
 
     if (error.message.includes('quota')) {
-      return res.status(429).json({ 
+      return res.status(429).json({
         error: 'Rate limit exceeded',
         message: 'YouTube API quota exceeded. Please try again later.'
       });
     }
 
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Search failed',
       message: 'Unable to search videos at this time'
+    });
+  }
+});
+
+// OAuth authentication endpoints
+app.post('/api/auth/token', async (req, res) => {
+  try {
+    const { code, scope, state } = req.body;
+
+    if (!code) {
+      return res.status(400).json({
+        error: 'Authorization code required',
+        message: 'Please provide authorization code'
+      });
+    }
+
+    const tokenResponse = await authService.getOAuth2Token(code, scope, state);
+
+    logger.info('OAuth token exchange successful', {
+      ip: req.ip
+    });
+
+    res.json(tokenResponse);
+
+  } catch (error) {
+    logger.error('OAuth token exchange failed', {
+      error: error.message,
+      ip: req.ip
+    });
+
+    res.status(400).json({
+      error: 'Authentication failed',
+      message: error.message
+    });
+  }
+});
+
+app.post('/api/auth/verify', async (req, res) => {
+  try {
+    const { access_token } = req.body;
+
+    if (!access_token) {
+      return res.status(400).json({
+        error: 'Access token required',
+        message: 'Please provide access token'
+      });
+    }
+
+    const userInfo = await authService.verifyToken(access_token);
+
+    logger.info('Token verification successful', {
+      userId: userInfo.sub || userInfo.mezon_id,
+      username: userInfo.username || userInfo.display_name,
+      ip: req.ip
+    });
+
+    res.json({
+      username: userInfo.username || userInfo.display_name,
+      userId: userInfo.sub || userInfo.mezon_id,
+      avatar: userInfo.avatar
+    });
+
+  } catch (error) {
+    logger.error('Token verification failed', {
+      error: error.message,
+      ip: req.ip
+    });
+
+    res.status(401).json({
+      error: 'Invalid token',
+      message: error.message
     });
   }
 });
@@ -117,14 +190,14 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API endpoint not found' });
   }
-  
+
   const buildPath = path.join(__dirname, 'client/build', 'index.html');
-  
+
   // Check if build exists
   if (require('fs').existsSync(buildPath)) {
     res.sendFile(buildPath);
   } else {
-    res.status(503).json({ 
+    res.status(503).json({
       error: 'Application not built',
       message: 'Please run "npm run build" to build the client application'
     });
@@ -149,15 +222,15 @@ app.use((err, req, res, next) => {
 // Graceful shutdown
 const gracefulShutdown = (signal) => {
   logger.info(`Received ${signal}, starting graceful shutdown`);
-  
+
   socketHandlers.stop();
-  
+
   server.close((err) => {
     if (err) {
       logger.error('Error during server shutdown', { error: err.message });
       process.exit(1);
     }
-    
+
     logger.info('Server closed successfully');
     process.exit(0);
   });

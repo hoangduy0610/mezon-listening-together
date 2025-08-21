@@ -52,22 +52,25 @@ export const usePlayerControls = (socket) => {
   }, [socket]);
 
   /**
-   * Change volume
+   * Change volume (local only)
    */
   const handleVolumeChange = useCallback((newVolume) => {
-    if (!socket || typeof newVolume !== 'number') {
+    if (typeof newVolume !== 'number') {
       return;
     }
 
     // Clamp volume between 0 and 100
     const clampedVolume = Math.max(0, Math.min(100, Math.round(newVolume)));
     
-    socket.emit(SOCKET_EVENTS.VOLUME_CHANGE, clampedVolume);
+    // Only update local state, don't sync with room
     setVolume(clampedVolume);
-  }, [socket]);
+    
+    // Store in localStorage for persistence
+    localStorage.setItem('playerVolume', clampedVolume.toString());
+  }, []);
 
   /**
-   * Mute/unmute volume
+   * Mute/unmute volume (local only)
    */
   const toggleMute = useCallback(() => {
     const newVolume = volume === 0 ? APP_CONFIG.defaultVolume : 0;
@@ -100,9 +103,7 @@ export const usePlayerControls = (socket) => {
       if (typeof state.isPlaying === 'boolean') {
         setIsPlaying(state.isPlaying);
       }
-      if (typeof state.volume === 'number') {
-        setVolume(state.volume);
-      }
+      // Don't sync volume from room state - it's local only
     };
 
     const handlePlay = () => {
@@ -111,12 +112,6 @@ export const usePlayerControls = (socket) => {
 
     const handlePause = () => {
       setIsPlaying(false);
-    };
-
-    const handleVolumeChangeEvent = (newVolume) => {
-      if (typeof newVolume === 'number') {
-        setVolume(newVolume);
-      }
     };
 
     const handleSeekEvent = (time) => {
@@ -146,7 +141,6 @@ export const usePlayerControls = (socket) => {
     socket.on(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
     socket.on(SOCKET_EVENTS.PLAY, handlePlay);
     socket.on(SOCKET_EVENTS.PAUSE, handlePause);
-    socket.on(SOCKET_EVENTS.VOLUME_CHANGE, handleVolumeChangeEvent);
     socket.on(SOCKET_EVENTS.SEEK, handleSeekEvent);
     socket.on(SOCKET_EVENTS.SYNC_POSITION, handleSyncPosition);
     socket.on(SOCKET_EVENTS.PERIODIC_SYNC, handlePeriodicSync);
@@ -156,12 +150,22 @@ export const usePlayerControls = (socket) => {
       socket.off(SOCKET_EVENTS.ROOM_STATE, handleRoomState);
       socket.off(SOCKET_EVENTS.PLAY, handlePlay);
       socket.off(SOCKET_EVENTS.PAUSE, handlePause);
-      socket.off(SOCKET_EVENTS.VOLUME_CHANGE, handleVolumeChangeEvent);
       socket.off(SOCKET_EVENTS.SEEK, handleSeekEvent);
       socket.off(SOCKET_EVENTS.SYNC_POSITION, handleSyncPosition);
       socket.off(SOCKET_EVENTS.PERIODIC_SYNC, handlePeriodicSync);
     };
   }, [socket, isPlaying]);
+
+  // Load volume from localStorage on mount
+  useEffect(() => {
+    const savedVolume = localStorage.getItem('playerVolume');
+    if (savedVolume) {
+      const parsedVolume = parseInt(savedVolume, 10);
+      if (!isNaN(parsedVolume) && parsedVolume >= 0 && parsedVolume <= 100) {
+        setVolume(parsedVolume);
+      }
+    }
+  }, []);
 
   return {
     isPlaying,

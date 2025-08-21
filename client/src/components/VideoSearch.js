@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useYouTubeSearch } from '../hooks/useYouTubeSearch';
 
-const VideoSearch = ({ onAddVideo, isConnected }) => {
+const VideoSearch = ({ onAddVideo, isConnected, canAddVideo = true }) => {
   const {
     searchQuery,
     searchResults,
@@ -15,7 +15,7 @@ const VideoSearch = ({ onAddVideo, isConnected }) => {
   } = useYouTubeSearch();
 
   const handleAddVideo = (video) => {
-    if (!isConnected) {
+    if (!isConnected || !canAddVideo) {
       return;
     }
     onAddVideo(video);
@@ -29,10 +29,11 @@ const VideoSearch = ({ onAddVideo, isConnected }) => {
         video={video}
         onAdd={handleAddVideo}
         isConnected={isConnected}
+        canAdd={canAddVideo}
       />
     ));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchResults, isConnected]);
+  }, [searchResults, isConnected, canAddVideo]);
 
   const hasResults = searchResults.length > 0;
   const showEmptyState = hasSearched && !isSearching && !hasResults && !searchError;
@@ -141,20 +142,27 @@ const VideoSearch = ({ onAddVideo, isConnected }) => {
 };
 
 // Memoized search result item component
-const SearchResultItem = React.memo(({ video, onAdd, isConnected }) => {
+const SearchResultItem = React.memo(({ video, onAdd, isConnected, canAdd = true }) => {
   const handleClick = () => {
-    if (isConnected) {
+    if (isConnected && canAdd) {
       onAdd(video);
     }
+  };
+
+  const isDisabled = !isConnected || !canAdd;
+  const getTooltip = () => {
+    if (!isConnected) return 'Connect to add videos';
+    if (!canAdd) return 'You need playlist permission to add videos';
+    return 'Click to add to playlist';
   };
 
   const fallbackThumbnail = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA4MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zMiAyMkw0OCAzMkwzMiA0MlYyMloiIGZpbGw9IiM5Q0EzQUYiLz4KPC9zdmc+';
 
   return (
     <div 
-      className={`search-result ${!isConnected ? 'disabled' : ''}`}
+      className={`search-result ${isDisabled ? 'disabled' : ''}`}
       onClick={handleClick}
-      title={isConnected ? 'Click to add to playlist' : 'Connect to add videos'}
+      title={getTooltip()}
     >
       <img 
         src={video.thumbnail} 
@@ -172,7 +180,7 @@ const SearchResultItem = React.memo(({ video, onAdd, isConnected }) => {
         </div>
       </div>
       <div className="result-action">
-        <i className={`fas ${isConnected ? 'fa-plus-circle' : 'fa-wifi-slash'}`}></i>
+        <i className={`fas ${isDisabled ? 'fa-lock' : 'fa-plus-circle'}`}></i>
       </div>
     </div>
   );

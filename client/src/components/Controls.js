@@ -10,6 +10,7 @@ const Controls = ({
   onToggleMute,
   hasVideo,
   isConnected,
+  canControl = true,
 }) => {
   const [localVolume, setLocalVolume] = useState(volume);
   const [isMuted, setIsMuted] = useState(false);
@@ -70,7 +71,7 @@ const Controls = ({
     }
   };
 
-  const isControlsDisabled = !isConnected || !hasVideo;
+  const isControlsDisabled = !isConnected || !hasVideo || !canControl;
 
   return (
     <div className="controls">
@@ -82,14 +83,23 @@ const Controls = ({
         </div>
       )}
 
+      {isConnected && !canControl && (
+        <div className="controls-offline">
+          <i className="fas fa-lock"></i>
+          <span>You need playlist permission to control playback</span>
+        </div>
+      )}
+
       {/* Play/Pause Button */}
       <button
         className="control-btn"
         onClick={handlePlayPause}
         disabled={isControlsDisabled}
         title={
-          isControlsDisabled
+          !isConnected 
             ? "Connect to control playback"
+            : !canControl
+            ? "You need playlist permission to control playback"
             : isPlaying
             ? "Pause"
             : "Play"
@@ -108,7 +118,11 @@ const Controls = ({
         onClick={onSkip}
         disabled={isControlsDisabled}
         title={
-          isControlsDisabled ? "Connect to skip videos" : "Skip to next video"
+          !isConnected 
+            ? "Connect to skip videos" 
+            : !canControl
+            ? "You need playlist permission to skip videos"
+            : "Skip to next video"
         }
         style={{
           opacity: isControlsDisabled ? 0.3 : 1,

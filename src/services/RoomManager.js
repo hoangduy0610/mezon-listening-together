@@ -50,12 +50,15 @@ class RoomManager {
    * Add participant to room
    * @param {string} roomId - Room identifier
    * @param {string} socketId - Socket ID
+   * @param {Object} userInfo - User information from OAuth
    * @returns {Room} Room instance
    */
-  addParticipantToRoom(roomId, socketId) {
+  addParticipantToRoom(roomId, socketId, userInfo = null) {
     const room = this.getOrCreateRoom(roomId);
-    room.addParticipant(socketId);
-    this.logger.debug(`Added participant ${socketId} to room ${roomId} (${room.participants.size} total)`);
+    const participant = room.addParticipant(socketId, userInfo);
+    this.logger.debug(`Added participant ${socketId} (${participant.username}) to room ${roomId} (${room.participants.size} total)`, {
+      isOwner: participant.isOwner
+    });
     return room;
   }
 

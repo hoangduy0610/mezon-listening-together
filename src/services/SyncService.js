@@ -128,22 +128,6 @@ class SyncService {
   }
 
   /**
-   * Broadcast volume change to all participants in room except sender
-   * @param {string} roomId - Room ID
-   * @param {string} senderSocketId - Socket ID of sender
-   * @param {number} volume - New volume
-   */
-  broadcastVolumeChange(roomId, senderSocketId, volume) {
-    this.logger.debug(`Broadcasting volume change`, {
-      roomId,
-      volume,
-      sender: senderSocketId
-    });
-
-    this.io.to(roomId).except(senderSocketId).emit(EVENTS.VOLUME_CHANGE, volume);
-  }
-
-  /**
    * Update room time based on client updates
    * @param {string} roomId - Room ID
    * @param {string} socketId - Socket ID of updater
